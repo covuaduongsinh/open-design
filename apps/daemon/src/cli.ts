@@ -89,6 +89,9 @@ const HTML_VIDEO_STRING_FLAGS = new Set([
   'voice',
   'music',
   'music-volume',
+  'url',
+  'repo',
+  'max-scenes',
   'prompt',
   'output',
   'aspect',
@@ -808,7 +811,7 @@ async function runHtmlVideo(args) {
     printHtmlVideoHelp();
     return;
   }
-  if (sub !== 'generate' && sub !== 'templates') {
+  if (sub !== 'generate' && sub !== 'templates' && sub !== 'from-url') {
     console.error(`unknown subcommand: od html-video ${sub}`);
     printHtmlVideoHelp();
     process.exit(1);
@@ -816,6 +819,16 @@ async function runHtmlVideo(args) {
   const idx = args.indexOf(sub);
   const subArgs = [...args.slice(0, idx), ...args.slice(idx + 1)];
   if (sub === 'templates') return runHtmlVideoTemplates(subArgs);
+  if (sub === 'from-url') {
+    // First non-flag positional is the URL; forward it as --url.
+    const url = subArgs.find((a) => a && !a.startsWith('-'));
+    if (!url) {
+      console.error('usage: od html-video from-url <article-url> [--output <name.mp4>]');
+      process.exit(2);
+    }
+    const rest = subArgs.filter((a) => a !== url);
+    return runHtmlVideoGenerate([...rest, '--url', url]);
+  }
   return runHtmlVideoGenerate(subArgs);
 }
 
@@ -884,18 +897,21 @@ async function runHtmlVideoGenerate(rawArgs) {
     process.exit(2);
   }
 
-  if (!flags['composition-dir'] && !flags.template && !flags.scenes) {
-    console.error('pass --template <id> (see `od html-video templates`), --scenes \'<json>\', or --composition-dir <project-relative-path>');
+  if (!flags['composition-dir'] && !flags.template && !flags.scenes && !flags.url && !flags.repo) {
+    console.error('pass --template <id>, --scenes \'<json>\', --url <article>, --repo <owner/repo>, or --composition-dir <rel>');
     process.exit(2);
   }
 
   const body = {
     compositionDir: flags['composition-dir'],
     template: flags.template,
+    url: flags.url,
+    repo: flags.repo,
     prompt: flags.prompt,
     output: flags.output,
     aspect: flags.aspect,
   };
+  if (flags['max-scenes'] != null) body.maxScenes = Number(flags['max-scenes']);
   if (flags.inputs) {
     let parsed;
     try {
@@ -989,6 +1005,8 @@ function printHtmlVideoHelp() {
 Usage:
   od html-video generate --template <id> [--inputs '<json>'] [--output <name.mp4>]
   od html-video generate --scenes '<json array>' [--output <name.mp4>]
+  od html-video from-url <article-url> [--max-scenes <n>] [--output <name.mp4>]
+  od html-video generate --repo <owner/repo> [--max-scenes <n>]
   od html-video generate --composition-dir <rel> [--output <name.mp4>] [--aspect 16:9]
   od html-video templates [--search <intent>] [--json]
 
@@ -997,6 +1015,9 @@ Flags (generate):
   --template <id>         Template id from the catalogue (see: od html-video templates)
   --inputs '<json>'       JSON object of slot values, e.g. '{"title":"Q3 Recap"}'
   --scenes '<json>'       JSON array of scenes [{template, inputs?, durationSec?}] joined into one video
+  --url <article-url>     Distill an article URL into a storyboard
+  --repo <owner/repo>     Distill a GitHub repo (metadata + README) into a storyboard
+  --max-scenes <n>        Cap scenes generated from --url/--repo (default 5)
   --composition-dir <rel> Project-relative dir with hyperframes.json / meta.json / index.html
   --narration <text>      Narration to synthesize (TTS) and mix over the video
   --narration-file <path> Read narration text from a file (or - for stdin)

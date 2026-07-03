@@ -34,6 +34,7 @@ import {
 import { buildCompositionFromTemplate, findHtmlVideoTemplate } from './templates.js';
 import { concatVideos, mixAudioOntoVideo } from './ffmpeg.js';
 import { synthesizeSpeech, type TtsProvider } from './tts.js';
+import { buildStoryboardFromContent, fetchArticle, fetchRepo } from './extract.js';
 
 export {
   listHtmlVideoTemplates,
@@ -53,6 +54,12 @@ export interface GenerateHtmlVideoArgs {
   inputs?: Record<string, string>;
   /** Ordered scenes for a multi-scene storyboard (rendered + concatenated). */
   scenes?: HtmlVideoScene[];
+  /** Article URL to distill into a storyboard. */
+  url?: string;
+  /** GitHub repo (owner/repo or URL) to distill into a storyboard. */
+  repo?: string;
+  /** Cap on scenes generated from url/repo content (default 5). */
+  maxScenes?: number;
   /** Design-template roots to resolve `template` against. */
   templateRoots?: string[];
   /** Narration text to synthesize and mix over the video. */
@@ -103,6 +110,18 @@ export async function generateHtmlVideo(
     throw new Error('projectId required');
   }
 
+  // Article / repo → storyboard: distill the source into scenes, then render.
+  if (args.url || args.repo) {
+    args.onProgress?.(args.repo ? `Reading repo ${args.repo}` : `Reading ${args.url}`);
+    const content = args.repo
+      ? await fetchRepo(args.repo)
+      : await fetchArticle(args.url as string);
+    const maxScenes = typeof args.maxScenes === 'number' ? args.maxScenes : undefined;
+    const scenes = buildStoryboardFromContent(content, { maxScenes });
+    args.onProgress?.(`Built ${scenes.length}-scene storyboard from source`);
+    return renderStoryboard({ ...args, scenes });
+  }
+
   // Multi-scene storyboard: render each scene to its own MP4, then concatenate.
   if (args.scenes && args.scenes.length > 0) {
     return renderStoryboard(args);
@@ -111,8 +130,8 @@ export async function generateHtmlVideo(
   if (!args.template && !args.compositionDir) {
     throw new Error(
       'html-video requires --template <id> (see `od html-video templates`), ' +
-        '--scenes <json> for a storyboard, or --composition-dir <project-relative-path> ' +
-        'pointing at a directory scaffolded with `npx hyperframes init`.',
+        '--scenes <json> for a storyboard, --url/--repo to distill a source, ' +
+        'or --composition-dir <project-relative-path>.',
     );
   }
 

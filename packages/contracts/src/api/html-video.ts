@@ -58,6 +58,12 @@ export interface HtmlVideoGenerateRequest {
   inputs?: Record<string, string>;
   /** Ordered scenes for a multi-scene storyboard (rendered and concatenated). */
   scenes?: HtmlVideoScene[];
+  /** Article URL to distill into a storyboard. */
+  url?: string;
+  /** GitHub repo (owner/repo or URL) to distill into a storyboard. */
+  repo?: string;
+  /** Cap on scenes generated from url/repo content (default 5). */
+  maxScenes?: number;
   /** Narration text to synthesize (TTS) and mix over the video. */
   narration?: string;
   /** TTS provider for narration. Default: vbee (Vietnamese). */

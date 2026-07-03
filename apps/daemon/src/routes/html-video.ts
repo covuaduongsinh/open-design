@@ -65,8 +65,15 @@ export function registerHtmlVideoRoutes(app: Express, ctx: RegisterHtmlVideoRout
       typeof req.body?.compositionDir === 'string' ? req.body.compositionDir : undefined;
     const template = typeof req.body?.template === 'string' ? req.body.template : undefined;
     const scenes = Array.isArray(req.body?.scenes) ? req.body.scenes : undefined;
-    if (!compositionDir && !template && !(scenes && scenes.length > 0)) {
-      return sendApiError(res, 400, 'BAD_REQUEST', 'compositionDir, template, or scenes is required');
+    const url = typeof req.body?.url === 'string' ? req.body.url : undefined;
+    const repo = typeof req.body?.repo === 'string' ? req.body.repo : undefined;
+    if (!compositionDir && !template && !(scenes && scenes.length > 0) && !url && !repo) {
+      return sendApiError(
+        res,
+        400,
+        'BAD_REQUEST',
+        'compositionDir, template, scenes, url, or repo is required',
+      );
     }
     const inputs: Record<string, string> = {};
     if (req.body?.inputs && typeof req.body.inputs === 'object' && !Array.isArray(req.body.inputs)) {
@@ -98,6 +105,9 @@ export function registerHtmlVideoRoutes(app: Express, ctx: RegisterHtmlVideoRout
         template,
         inputs,
         scenes,
+        url,
+        repo,
+        maxScenes: typeof req.body?.maxScenes === 'number' ? req.body.maxScenes : undefined,
         templateRoots,
         narration: typeof req.body?.narration === 'string' ? req.body.narration : undefined,
         ttsProvider: req.body?.ttsProvider === 'minimax' ? 'minimax' : undefined,

@@ -84,15 +84,21 @@ export function runHyperFramesRender(
   onProgress?: HyperFramesProgress,
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
+    // On Windows `npx` is a .cmd shim: since Node 20 spawn() refuses to exec a
+    // .cmd without a shell (EINVAL), so run through the shell there and quote
+    // the path args (which may contain spaces). On POSIX spawn npx directly
+    // with no shell, so args need no quoting.
+    const useShell = process.platform === 'win32';
+    const quote = (value: string): string => (useShell ? `"${value}"` : value);
     const child = spawn(
       'npx',
       [
         '-y',
         'hyperframes',
         'render',
-        compAbs,
+        quote(compAbs),
         '--output',
-        tmpOutput,
+        quote(tmpOutput),
         '--workers',
         '1',
       ],
@@ -102,6 +108,7 @@ export function runHyperFramesRender(
         // read from it), stdout/stderr piped so we can stream.
         env: process.env,
         stdio: ['ignore', 'pipe', 'pipe'],
+        shell: useShell,
       },
     );
 

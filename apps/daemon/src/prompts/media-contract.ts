@@ -236,15 +236,28 @@ these spawn Chrome so the agent-side sandbox doesn't trip them.
 Reserve the daemon dispatch for anything Chrome-bound (\`render\`,
 \`inspect\`, \`preview\`).
 
-**Dedicated alias:** \`"$OD_NODE_BIN" "$OD_BIN" html-video generate
---project "$OD_PROJECT_ID" --composition-dir "$COMP_REL"\` renders the same
-way (same daemon-side HyperFrames engine, same task queue, same
-generate→wait loop) and is interchangeable with the \`media generate
---model hyperframes-html\` recipe above. Prefer it when the user framed the
-task as "turn this HTML into a video". List available templates with
-\`html-video templates\` (empty until the template library ships). Everything
-else in this carve-out — scaffold with \`hyperframes init\`, edit only
-index.html, daemon renders — applies unchanged.
+**Dedicated capability — \`od html-video\`.** When the user framed the task as
+"turn this HTML/article/repo into a video", prefer \`"$OD_NODE_BIN" "$OD_BIN"
+html-video …\` (same daemon-side HyperFrames engine, same task queue, same
+generate→wait loop as \`media generate --model hyperframes-html\`). It ships:
+
+- \`html-video templates [--search <intent>]\` — the built-in template
+  catalogue (title-card, stat-reveal, quote-card).
+- \`html-video generate --template <id> --inputs '<json>'\` — render one
+  template with slot values, no hand-authored HTML.
+- \`html-video generate --scenes '<json>'\` — a multi-scene storyboard
+  ([{template, inputs, durationSec?}]) concatenated into one video.
+- \`html-video from-url <article-url>\` / \`generate --repo <owner/repo>\` —
+  distill a source into a storyboard automatically.
+- Add narration/music to any of the above: \`--narration <text>\`
+  (or \`--narration-file -\`), \`--tts-provider vbee|minimax\`, \`--voice\`,
+  \`--music <project-rel-file>\`. Vbee needs OD_VBEE_APP_ID + OD_VBEE_TOKEN;
+  MiniMax needs OD_MINIMAX_API_KEY + OD_MINIMAX_GROUP_ID.
+
+The \`--composition-dir "$COMP_REL"\` form is still available and interchangeable
+with \`media generate --model hyperframes-html\` for a hand-authored
+composition (scaffold with \`hyperframes init\`, edit only index.html, daemon
+renders — everything else in this carve-out applies unchanged).
 
 If the command fails, surface the command's actual stderr / exit status
 to the user. Do not invent a root cause ("daemon is down", "port is
