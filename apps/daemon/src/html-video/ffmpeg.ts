@@ -138,3 +138,83 @@ export async function concatVideos(
   if (inputs.length === 0) throw new Error('concatVideos requires at least one input');
   await runFfmpeg(buildConcatArgs(inputs, output, opts), onProgress);
 }
+
+export interface SoundtrackArgs {
+  /** Narration / voice-over audio, played at full volume. */
+  narrationPath?: string;
+  /** Background music, ducked under the narration. */
+  musicPath?: string;
+  /** Music volume 0..1 (default 0.22, i.e. ducked well under voice). */
+  musicVolume?: number;
+}
+
+/**
+ * Build ffmpeg args that mux a soundtrack onto a (silent) video. The video
+ * length is preserved: audio is `apad`ded and `-shortest` trims at the video
+ * end, so a short narration never cuts the video off. Exposed for testing.
+ */
+export function buildMixArgs(
+  videoPath: string,
+  output: string,
+  soundtrack: SoundtrackArgs,
+): string[] {
+  const hasNarration = Boolean(soundtrack.narrationPath);
+  const hasMusic = Boolean(soundtrack.musicPath);
+  if (!hasNarration && !hasMusic) {
+    throw new Error('buildMixArgs requires a narration or music track');
+  }
+  const vol = clampVolume(soundtrack.musicVolume);
+
+  const args: string[] = ['-i', videoPath];
+  if (hasNarration) args.push('-i', soundtrack.narrationPath as string);
+  if (hasMusic) args.push('-i', soundtrack.musicPath as string);
+
+  // Input indices: 0 = video; then narration (if any); then music (if any).
+  const narrIdx = hasNarration ? 1 : -1;
+  const musicIdx = hasMusic ? (hasNarration ? 2 : 1) : -1;
+
+  let filter: string;
+  if (hasNarration && hasMusic) {
+    filter =
+      `[${narrIdx}:a]apad[narr];` +
+      `[${musicIdx}:a]volume=${vol},apad[mus];` +
+      `[narr][mus]amix=inputs=2:duration=longest:normalize=0[a]`;
+  } else if (hasNarration) {
+    filter = `[${narrIdx}:a]apad[a]`;
+  } else {
+    filter = `[${musicIdx}:a]volume=${vol},apad[a]`;
+  }
+
+  args.push(
+    '-filter_complex',
+    filter,
+    '-map',
+    '0:v',
+    '-map',
+    '[a]',
+    '-c:v',
+    'copy',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
+    '-shortest',
+    output,
+  );
+  return args;
+}
+
+function clampVolume(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0.22;
+  return Math.min(1, Math.max(0, value));
+}
+
+/** Mux a narration and/or background-music track onto a silent video. */
+export async function mixAudioOntoVideo(
+  videoPath: string,
+  output: string,
+  soundtrack: SoundtrackArgs,
+  onProgress?: FfmpegProgress,
+): Promise<void> {
+  await runFfmpeg(buildMixArgs(videoPath, output, soundtrack), onProgress);
+}

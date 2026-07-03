@@ -99,6 +99,12 @@ export function registerHtmlVideoRoutes(app: Express, ctx: RegisterHtmlVideoRout
         inputs,
         scenes,
         templateRoots,
+        narration: typeof req.body?.narration === 'string' ? req.body.narration : undefined,
+        ttsProvider: req.body?.ttsProvider === 'minimax' ? 'minimax' : undefined,
+        voice: typeof req.body?.voice === 'string' ? req.body.voice : undefined,
+        musicFile: typeof req.body?.musicFile === 'string' ? req.body.musicFile : undefined,
+        musicVolume:
+          typeof req.body?.musicVolume === 'number' ? req.body.musicVolume : undefined,
         output: typeof req.body?.output === 'string' ? req.body.output : undefined,
         aspect: typeof req.body?.aspect === 'string' ? req.body.aspect : undefined,
         onProgress: (line: string) => appendTaskProgress(task!, line),

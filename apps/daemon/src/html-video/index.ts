@@ -25,13 +25,15 @@ import path from 'node:path';
 
 import type { HtmlVideoScene } from '@open-design/contracts';
 import { ensureProject, kindFor, mimeFor, sanitizeName } from '../projects.js';
+import { resolveProviderConfig } from '../media/config.js';
 import {
   assertHyperFramesCompositionFile,
   renderHyperFramesComposition,
   type HyperFramesProgress,
 } from '../media/hyperframes.js';
 import { buildCompositionFromTemplate, findHtmlVideoTemplate } from './templates.js';
-import { concatVideos } from './ffmpeg.js';
+import { concatVideos, mixAudioOntoVideo } from './ffmpeg.js';
+import { synthesizeSpeech, type TtsProvider } from './tts.js';
 
 export {
   listHtmlVideoTemplates,
@@ -53,6 +55,16 @@ export interface GenerateHtmlVideoArgs {
   scenes?: HtmlVideoScene[];
   /** Design-template roots to resolve `template` against. */
   templateRoots?: string[];
+  /** Narration text to synthesize and mix over the video. */
+  narration?: string;
+  /** TTS provider for narration (default: vbee). */
+  ttsProvider?: TtsProvider | undefined;
+  /** Provider voice id/code for narration. */
+  voice?: string;
+  /** Project-relative background-music file to mix (ducked under narration). */
+  musicFile?: string;
+  /** Background-music volume 0..1 (default 0.22). */
+  musicVolume?: number;
   /** Output filename inside the project folder. Auto-named when omitted. */
   output?: string;
   /** Aspect ratio label, informational for the provider note. */
@@ -192,7 +204,7 @@ export async function generateHtmlVideo(
     if (cleanup) await cleanup();
   }
 
-  return finalizeProjectVideo(dir, args.output, bytes, aspect);
+  return finalizeWithSoundtrack(args, dir, bytes, aspect);
 }
 
 /** Write MP4 bytes into the project folder and build the file metadata. */
@@ -226,6 +238,94 @@ function describeRenderError(err: unknown): string {
       ? (err as { stderr: string }).stderr.trim()
       : '';
   return (stderr || (err instanceof Error ? err.message : String(err))).slice(0, 480);
+}
+
+/** Apply the soundtrack (narration + music) if requested, then write + describe. */
+async function finalizeWithSoundtrack(
+  args: GenerateHtmlVideoArgs,
+  dir: string,
+  bytes: Buffer,
+  aspect: string,
+): Promise<HtmlVideoFileMeta> {
+  const withAudio = await applySoundtrack(args, dir, bytes);
+  return finalizeProjectVideo(dir, args.output, withAudio, aspect);
+}
+
+/**
+ * Synthesize narration and/or mix a background-music file onto the rendered
+ * (silent) video. Returns the original bytes unchanged when no soundtrack was
+ * requested. Runs entirely in an OS temp dir.
+ */
+async function applySoundtrack(
+  args: GenerateHtmlVideoArgs,
+  dir: string,
+  videoBytes: Buffer,
+): Promise<Buffer> {
+  const wantsNarration = typeof args.narration === 'string' && args.narration.trim().length > 0;
+  const wantsMusic = typeof args.musicFile === 'string' && args.musicFile.trim().length > 0;
+  if (!wantsNarration && !wantsMusic) return videoBytes;
+
+  const tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'open-design-hv-au-'));
+  try {
+    const inPath = path.join(tmpRoot, 'in.mp4');
+    await writeFile(inPath, videoBytes);
+
+    let narrationPath: string | undefined;
+    if (wantsNarration) {
+      const provider: TtsProvider = args.ttsProvider === 'minimax' ? 'minimax' : 'vbee';
+      const cfg = (await resolveProviderConfig(args.projectRoot, provider)) as {
+        apiKey?: string;
+        baseUrl?: string;
+      };
+      args.onProgress?.(`Synthesizing narration (${provider})`);
+      const speech = await synthesizeSpeech({
+        provider,
+        text: args.narration as string,
+        voice: args.voice,
+        credentials: {
+          apiKey: cfg?.apiKey,
+          baseUrl: cfg?.baseUrl,
+          appId: process.env.OD_VBEE_APP_ID,
+          groupId: process.env.OD_MINIMAX_GROUP_ID,
+        },
+        onProgress: args.onProgress,
+      });
+      narrationPath = path.join(tmpRoot, `narration${speech.ext}`);
+      await writeFile(narrationPath, speech.bytes);
+    }
+
+    let musicPath: string | undefined;
+    if (wantsMusic) {
+      musicPath = resolveProjectFile(dir, args.musicFile as string);
+      try {
+        const st = await stat(musicPath);
+        if (!st.isFile()) throw new Error('not a file');
+      } catch {
+        throw new Error(`music file not found in project: ${args.musicFile}`);
+      }
+    }
+
+    const outPath = path.join(tmpRoot, 'out.mp4');
+    args.onProgress?.('Mixing soundtrack');
+    const mixOpts: Parameters<typeof mixAudioOntoVideo>[2] = {};
+    if (narrationPath) mixOpts.narrationPath = narrationPath;
+    if (musicPath) mixOpts.musicPath = musicPath;
+    if (typeof args.musicVolume === 'number') mixOpts.musicVolume = args.musicVolume;
+    await mixAudioOntoVideo(inPath, outPath, mixOpts, args.onProgress);
+    return await readFile(outPath);
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
+}
+
+/** Resolve a project-relative file and refuse anything escaping the project. */
+function resolveProjectFile(dir: string, rel: string): string {
+  const root = path.resolve(dir);
+  const abs = path.resolve(root, rel);
+  if (abs !== root && !abs.startsWith(root + path.sep)) {
+    throw new Error(`"${rel}" resolves outside the project directory`);
+  }
+  return abs;
 }
 
 /**
@@ -283,7 +383,7 @@ async function renderStoryboard(args: GenerateHtmlVideoArgs): Promise<HtmlVideoF
 
     if (sceneVideos.length === 1) {
       const bytes = await readFile(sceneVideos[0]!);
-      return finalizeProjectVideo(dir, args.output, bytes, aspect);
+      return finalizeWithSoundtrack(args, dir, bytes, aspect);
     }
 
     args.onProgress?.(`Concatenating ${sceneVideos.length} scenes`);
@@ -294,7 +394,7 @@ async function renderStoryboard(args: GenerateHtmlVideoArgs): Promise<HtmlVideoF
       throw new Error(`html-video storyboard concat failed: ${describeRenderError(err)}`);
     }
     const bytes = await readFile(concatOut);
-    return finalizeProjectVideo(dir, args.output, bytes, aspect);
+    return finalizeWithSoundtrack(args, dir, bytes, aspect);
   } finally {
     await rm(tmpRoot, { recursive: true, force: true });
   }

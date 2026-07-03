@@ -31,6 +31,7 @@ export type MediaProviderId =
   | 'openai'
   | 'codex'
   | 'volcengine'
+  | 'seedance2ai'
   | 'grok'
   | 'hyperframes'
   | 'nanobanana'
@@ -45,6 +46,7 @@ export type MediaProviderId =
   | 'midjourney'
   | 'kling'
   | 'minimax'
+  | 'vbee'
   | 'suno'
   | 'udio'
   | 'elevenlabs'
@@ -107,6 +109,16 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     integrated: true,
     defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     docsUrl: 'https://console.volcengine.com/ark',
+  },
+  {
+    id: 'seedance2ai',
+    label: 'Seedance2.ai',
+    hint: 'Seedance 2.0 on your seedance2.ai credits',
+    integrated: true,
+    credentialsRequired: true,
+    settingsVisible: true,
+    defaultBaseUrl: 'https://api.seedance2.ai',
+    docsUrl: 'https://seedance2.ai/api-docs',
   },
   {
     id: 'grok',
@@ -233,6 +245,16 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     integrated: true,
     defaultBaseUrl: 'https://api.minimaxi.chat/v1',
     docsUrl: 'https://platform.minimaxi.com',
+  },
+  {
+    id: 'vbee',
+    label: 'Vbee',
+    hint: 'Vietnamese AI Voice (TTS)',
+    integrated: true,
+    credentialsRequired: true,
+    settingsVisible: true,
+    defaultBaseUrl: 'https://vbee.vn',
+    docsUrl: 'https://vbee.vn',
   },
   {
     id: 'suno',
@@ -539,6 +561,14 @@ export const VIDEO_MODELS: MediaModel[] = [
     caps: ['t2v', 'i2v', 'audio'],
     default: true,
   },
+  // seedance2.ai — Seedance 2.0 on the user's own seedance2.ai credits.
+  {
+    id: 'seedance2ai-seedance-2-0',
+    label: 'seedance-2.0 (seedance2.ai)',
+    hint: 'seedance2.ai · your own credits · t2v + i2v',
+    provider: 'seedance2ai',
+    caps: ['t2v', 'i2v'],
+  },
   {
     id: 'doubao-seedance-2-0-fast-260128',
     label: 'seedance-2.0-fast',
@@ -641,6 +671,7 @@ export const AUDIO_MODELS_BY_KIND: Record<AudioKind, MediaModel[]> = {
   ],
   speech: [
     { id: 'minimax-tts', label: 'minimax-tts', hint: 'MiniMax', provider: 'minimax', caps: ['tts'], default: true },
+    { id: 'vbee-tts', label: 'vbee-tts', hint: 'Vbee · Vietnamese TTS', provider: 'vbee', caps: ['tts'] },
     { id: 'fish-speech-2', label: 'fish-speech-2', hint: 'FishAudio', provider: 'fishaudio', caps: ['tts', 'voice-clone'] },
     { id: 'elevenlabs-v3', label: 'elevenlabs-v3', hint: 'ElevenLabs', provider: 'elevenlabs', caps: ['tts', 'voice-clone'] },
     { id: 'senseaudio-tts', label: 'senseaudio-tts', hint: 'SenseAudio', provider: 'senseaudio', caps: ['tts', 'voice-clone'] },

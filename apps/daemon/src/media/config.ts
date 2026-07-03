@@ -84,6 +84,7 @@ const ENV_KEYS: Record<string, string[]> = {
     'AZURE_OPENAI_API_KEY',
   ],
   volcengine: ['OD_VOLCENGINE_API_KEY', 'ARK_API_KEY', 'VOLCENGINE_API_KEY'],
+  seedance2ai: ['OD_SEEDANCE2AI_API_KEY', 'SEEDANCE2AI_API_KEY'],
   // OD_GROK_API_KEY first (the project-reserved override, same shape as
   // every other provider above), then XAI_API_KEY as the canonical
   // upstream env per docs.x.ai quickstart — so users who already export
@@ -100,6 +101,7 @@ const ENV_KEYS: Record<string, string[]> = {
   kling: ['OD_KLING_API_KEY', 'KLING_API_KEY'],
   midjourney: ['OD_MIDJOURNEY_API_KEY'],
   minimax: ['OD_MINIMAX_API_KEY', 'MINIMAX_API_KEY'],
+  vbee: ['OD_VBEE_TOKEN', 'VBEE_TOKEN'],
   suno: ['OD_SUNO_API_KEY'],
   udio: ['OD_UDIO_API_KEY'],
   elevenlabs: ['OD_ELEVENLABS_API_KEY', 'ELEVENLABS_API_KEY'],

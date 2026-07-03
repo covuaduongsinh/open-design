@@ -83,6 +83,12 @@ const HTML_VIDEO_STRING_FLAGS = new Set([
   'template',
   'inputs',
   'scenes',
+  'narration',
+  'narration-file',
+  'tts-provider',
+  'voice',
+  'music',
+  'music-volume',
   'prompt',
   'output',
   'aspect',
@@ -918,6 +924,30 @@ async function runHtmlVideoGenerate(rawArgs) {
     }
     body.scenes = parsed;
   }
+  // Narration: inline --narration, or --narration-file <path|-> (- reads stdin).
+  let narration = flags.narration;
+  if (!narration && flags['narration-file']) {
+    try {
+      narration =
+        flags['narration-file'] === '-'
+          ? readFileSync(0, 'utf8')
+          : readFileSync(flags['narration-file'], 'utf8');
+    } catch (err) {
+      console.error(`failed to read --narration-file: ${err && err.message ? err.message : err}`);
+      process.exit(2);
+    }
+  }
+  if (narration) body.narration = narration;
+  if (flags['tts-provider']) {
+    if (flags['tts-provider'] !== 'vbee' && flags['tts-provider'] !== 'minimax') {
+      console.error('--tts-provider must be vbee or minimax');
+      process.exit(2);
+    }
+    body.ttsProvider = flags['tts-provider'];
+  }
+  if (flags.voice) body.voice = flags.voice;
+  if (flags.music) body.musicFile = flags.music;
+  if (flags['music-volume'] != null) body.musicVolume = Number(flags['music-volume']);
 
   const url = token
     ? `${daemonUrl.replace(/\/$/, '')}/api/tools/html-video/generate`
@@ -968,9 +998,19 @@ Flags (generate):
   --inputs '<json>'       JSON object of slot values, e.g. '{"title":"Q3 Recap"}'
   --scenes '<json>'       JSON array of scenes [{template, inputs?, durationSec?}] joined into one video
   --composition-dir <rel> Project-relative dir with hyperframes.json / meta.json / index.html
+  --narration <text>      Narration to synthesize (TTS) and mix over the video
+  --narration-file <path> Read narration text from a file (or - for stdin)
+  --tts-provider <name>   vbee (Vietnamese, default) or minimax
+  --voice <code>          Provider voice id/code for narration
+  --music <rel>           Project-relative background-music file (ducked under narration)
+  --music-volume <0..1>   Background-music volume (default 0.22)
   --output <name.mp4>     Output filename inside the project (auto-named otherwise)
   --aspect <ratio>        Aspect ratio label, e.g. 16:9 (informational)
   --daemon-url <url>      Override the daemon base URL
+
+Credentials (narration):
+  Vbee    — set OD_VBEE_APP_ID and OD_VBEE_TOKEN
+  MiniMax — set OD_MINIMAX_API_KEY and OD_MINIMAX_GROUP_ID
 
 Render from a template:
   od html-video templates --search "title card"

@@ -58,6 +58,16 @@ export interface HtmlVideoGenerateRequest {
   inputs?: Record<string, string>;
   /** Ordered scenes for a multi-scene storyboard (rendered and concatenated). */
   scenes?: HtmlVideoScene[];
+  /** Narration text to synthesize (TTS) and mix over the video. */
+  narration?: string;
+  /** TTS provider for narration. Default: vbee (Vietnamese). */
+  ttsProvider?: 'vbee' | 'minimax';
+  /** Provider voice id/code for narration. */
+  voice?: string;
+  /** Project-relative background-music file, ducked under the narration. */
+  musicFile?: string;
+  /** Background-music volume 0..1 (default 0.22). */
+  musicVolume?: number;
   /** Free-text brief used to fill template slots. */
   prompt?: string;
   /** Output filename inside the project folder. Defaults to an auto name. */

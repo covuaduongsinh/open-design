@@ -34,6 +34,7 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
   { id: 'openai', label: 'OpenAI', hint: 'gpt-image-2 / dall-e-3', integrated: true, defaultBaseUrl: 'https://api.openai.com/v1' },
   { id: 'codex', label: 'Codex Subscription', hint: 'gpt-image-2 via local Codex CLI login', integrated: true, credentialsRequired: false, docsUrl: 'https://developers.openai.com/codex' },
   { id: 'volcengine', label: 'Volcengine Ark (Doubao)', hint: 'Seedance 2.0 / Seedream', integrated: true, defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3' },
+  { id: 'seedance2ai', label: 'Seedance2.ai', hint: 'Seedance 2.0 on your seedance2.ai credits', integrated: true, credentialsRequired: true, settingsVisible: true, defaultBaseUrl: 'https://api.seedance2.ai', docsUrl: 'https://seedance2.ai/api-docs' },
   { id: 'grok', label: 'xAI Grok Imagine', hint: 'grok-imagine — image + video with native audio', integrated: true, defaultBaseUrl: 'https://api.x.ai/v1' },
   { id: 'hyperframes', label: 'HyperFrames', hint: 'Local HTML -> MP4 renderer', integrated: true, credentialsRequired: false, settingsVisible: false },
   { id: 'nanobanana', label: 'Nano Banana', hint: 'Google official by default; custom gateway configurable', integrated: true, defaultBaseUrl: 'https://generativelanguage.googleapis.com', supportsCustomModel: true },
@@ -49,6 +50,7 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
   { id: 'kling', label: 'Kuaishou Kling', hint: 'Kling 1.6 / 2.0 video', integrated: false },
   { id: 'midjourney', label: 'Midjourney (proxy)', hint: 'midjourney-v7', integrated: false },
   { id: 'minimax', label: 'MiniMax', hint: 'TTS / video-01', integrated: true, defaultBaseUrl: 'https://api.minimaxi.chat/v1' },
+  { id: 'vbee', label: 'Vbee', hint: 'Vietnamese AI Voice (TTS)', integrated: true, credentialsRequired: true, settingsVisible: true, defaultBaseUrl: 'https://vbee.vn', docsUrl: 'https://vbee.vn' },
   { id: 'suno', label: 'Suno', hint: 'Music generation', integrated: false },
   { id: 'udio', label: 'Udio', hint: 'Music generation', integrated: false },
   {
@@ -156,6 +158,8 @@ export const VIDEO_MODELS: MediaModel[] = [
   { id: 'doubao-seedance-1-0-lite-i2v-250428', label: 'seedance-1.0-lite-i2v', hint: 'ByteDance · image-to-video', provider: 'volcengine', caps: ['i2v'] },
   { id: 'doubao-seedance-1-0-lite-t2v-250428', label: 'seedance-1.0-lite-t2v', hint: 'ByteDance · text-to-video', provider: 'volcengine', caps: ['t2v'] },
 
+  { id: 'seedance2ai-seedance-2-0', label: 'seedance-2.0 (seedance2.ai)', hint: 'seedance2.ai · your own credits · t2v + i2v', provider: 'seedance2ai', caps: ['t2v', 'i2v'] },
+
   { id: 'grok-imagine-video', label: 'grok-imagine-video', hint: 'xAI · 720p t2v + i2v + native audio', provider: 'grok', caps: ['t2v', 'i2v', 'audio'] },
 
   // OpenRouter video models.
@@ -199,6 +203,7 @@ export const AUDIO_MODELS_BY_KIND: Record<AudioKind, MediaModel[]> = {
   ],
   speech: [
     { id: 'minimax-tts', label: 'minimax-tts', hint: 'MiniMax', provider: 'minimax', caps: ['tts'], default: true },
+    { id: 'vbee-tts', label: 'vbee-tts', hint: 'Vbee · Vietnamese TTS', provider: 'vbee', caps: ['tts'] },
     { id: 'fish-speech-2', label: 'fish-speech-2', hint: 'FishAudio', provider: 'fishaudio', caps: ['tts', 'voice-clone'] },
     { id: 'elevenlabs-v3', label: 'elevenlabs-v3', hint: 'ElevenLabs', provider: 'elevenlabs', caps: ['tts', 'voice-clone'] },
     { id: 'senseaudio-tts', label: 'senseaudio-tts', hint: 'SenseAudio', provider: 'senseaudio', caps: ['tts', 'voice-clone'] },
