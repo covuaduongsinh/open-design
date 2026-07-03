@@ -205,9 +205,14 @@ const SAFE_COLOR = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20}|rgb\(\s*\d{1,3}\s*,\s*\d{
 export function renderTemplateHtml(
   template: HtmlVideoTemplate,
   inputs: Record<string, string> = {},
+  opts: { durationSec?: number } = {},
 ): string {
+  const durationSec =
+    typeof opts.durationSec === 'number' && opts.durationSec > 0
+      ? opts.durationSec
+      : template.durationSec;
   const values: Record<string, string> = {
-    duration: String(template.durationSec),
+    duration: String(durationSec),
     width: String(template.width),
     height: String(template.height),
   };
@@ -232,6 +237,7 @@ export function renderTemplateHtml(
 export function buildCompositionFromTemplate(
   template: HtmlVideoTemplate,
   inputs: Record<string, string> = {},
+  opts: { durationSec?: number } = {},
 ): { name: string; content: string }[] {
   const hyperframes = {
     $schema: 'https://hyperframes.heygen.com/schema/hyperframes.json',
@@ -243,6 +249,6 @@ export function buildCompositionFromTemplate(
   return [
     { name: 'hyperframes.json', content: JSON.stringify(hyperframes, null, 2) },
     { name: 'meta.json', content: JSON.stringify(meta, null, 2) },
-    { name: 'index.html', content: renderTemplateHtml(template, inputs) },
+    { name: 'index.html', content: renderTemplateHtml(template, inputs, opts) },
   ];
 }

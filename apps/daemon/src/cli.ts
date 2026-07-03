@@ -82,6 +82,7 @@ const HTML_VIDEO_STRING_FLAGS = new Set([
   'composition-dir',
   'template',
   'inputs',
+  'scenes',
   'prompt',
   'output',
   'aspect',
@@ -877,8 +878,8 @@ async function runHtmlVideoGenerate(rawArgs) {
     process.exit(2);
   }
 
-  if (!flags['composition-dir'] && !flags.template) {
-    console.error('pass --template <id> (see `od html-video templates`) or --composition-dir <project-relative-path>');
+  if (!flags['composition-dir'] && !flags.template && !flags.scenes) {
+    console.error('pass --template <id> (see `od html-video templates`), --scenes \'<json>\', or --composition-dir <project-relative-path>');
     process.exit(2);
   }
 
@@ -902,6 +903,20 @@ async function runHtmlVideoGenerate(rawArgs) {
       process.exit(2);
     }
     body.inputs = parsed;
+  }
+  if (flags.scenes) {
+    let parsed;
+    try {
+      parsed = JSON.parse(flags.scenes);
+    } catch {
+      console.error('--scenes must be a JSON array, e.g. --scenes \'[{"template":"title-card","inputs":{"title":"Hi"}}]\'');
+      process.exit(2);
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      console.error('--scenes must be a non-empty JSON array of { template, inputs?, durationSec? }');
+      process.exit(2);
+    }
+    body.scenes = parsed;
   }
 
   const url = token
@@ -943,6 +958,7 @@ function printHtmlVideoHelp() {
 
 Usage:
   od html-video generate --template <id> [--inputs '<json>'] [--output <name.mp4>]
+  od html-video generate --scenes '<json array>' [--output <name.mp4>]
   od html-video generate --composition-dir <rel> [--output <name.mp4>] [--aspect 16:9]
   od html-video templates [--search <intent>] [--json]
 
@@ -950,6 +966,7 @@ Flags (generate):
   --project <id>          Project id (or set OD_PROJECT_ID; injected for agents)
   --template <id>         Template id from the catalogue (see: od html-video templates)
   --inputs '<json>'       JSON object of slot values, e.g. '{"title":"Q3 Recap"}'
+  --scenes '<json>'       JSON array of scenes [{template, inputs?, durationSec?}] joined into one video
   --composition-dir <rel> Project-relative dir with hyperframes.json / meta.json / index.html
   --output <name.mp4>     Output filename inside the project (auto-named otherwise)
   --aspect <ratio>        Aspect ratio label, e.g. 16:9 (informational)

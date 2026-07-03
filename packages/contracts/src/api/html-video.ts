@@ -39,6 +39,16 @@ export interface HtmlVideoTemplatesResponse {
  * `compositionDir` (a project-relative directory the agent scaffolded) — M1.
  * `template` + `prompt` are reserved for the template library (M2+).
  */
+/** One scene in a multi-scene storyboard — a template render plus overrides. */
+export interface HtmlVideoScene {
+  /** Template id for this scene. */
+  template: string;
+  /** Slot values for this scene's template. */
+  inputs?: Record<string, string>;
+  /** Override the template's default scene duration (seconds). */
+  durationSec?: number;
+}
+
 export interface HtmlVideoGenerateRequest {
   /** Project-relative directory holding hyperframes.json / meta.json / index.html. */
   compositionDir?: string;
@@ -46,7 +56,9 @@ export interface HtmlVideoGenerateRequest {
   template?: string;
   /** Slot values for the chosen template's inputs. */
   inputs?: Record<string, string>;
-  /** Free-text brief used to fill template slots (M3+ storyboard). */
+  /** Ordered scenes for a multi-scene storyboard (rendered and concatenated). */
+  scenes?: HtmlVideoScene[];
+  /** Free-text brief used to fill template slots. */
   prompt?: string;
   /** Output filename inside the project folder. Defaults to an auto name. */
   output?: string;

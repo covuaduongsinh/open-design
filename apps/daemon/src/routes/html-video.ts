@@ -64,8 +64,9 @@ export function registerHtmlVideoRoutes(app: Express, ctx: RegisterHtmlVideoRout
     const compositionDir =
       typeof req.body?.compositionDir === 'string' ? req.body.compositionDir : undefined;
     const template = typeof req.body?.template === 'string' ? req.body.template : undefined;
-    if (!compositionDir && !template) {
-      return sendApiError(res, 400, 'BAD_REQUEST', 'compositionDir or template is required');
+    const scenes = Array.isArray(req.body?.scenes) ? req.body.scenes : undefined;
+    if (!compositionDir && !template && !(scenes && scenes.length > 0)) {
+      return sendApiError(res, 400, 'BAD_REQUEST', 'compositionDir, template, or scenes is required');
     }
     const inputs: Record<string, string> = {};
     if (req.body?.inputs && typeof req.body.inputs === 'object' && !Array.isArray(req.body.inputs)) {
@@ -96,6 +97,7 @@ export function registerHtmlVideoRoutes(app: Express, ctx: RegisterHtmlVideoRout
         compositionDir,
         template,
         inputs,
+        scenes,
         templateRoots,
         output: typeof req.body?.output === 'string' ? req.body.output : undefined,
         aspect: typeof req.body?.aspect === 'string' ? req.body.aspect : undefined,

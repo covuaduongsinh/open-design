@@ -28,7 +28,7 @@ describe('html-video generator preflight', () => {
         projectsRoot,
         projectId: 'project-1',
       }),
-    ).rejects.toThrow(/requires either --template/);
+    ).rejects.toThrow(/requires --template/);
   });
 
   it('rejects an unknown template id', async () => {

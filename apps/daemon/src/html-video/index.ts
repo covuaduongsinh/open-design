@@ -19,10 +19,11 @@
 // returned metadata matches the media file-meta shape the task snapshot /
 // CLI poll already understand.
 
-import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import type { HtmlVideoScene } from '@open-design/contracts';
 import { ensureProject, kindFor, mimeFor, sanitizeName } from '../projects.js';
 import {
   assertHyperFramesCompositionFile,
@@ -30,6 +31,7 @@ import {
   type HyperFramesProgress,
 } from '../media/hyperframes.js';
 import { buildCompositionFromTemplate, findHtmlVideoTemplate } from './templates.js';
+import { concatVideos } from './ffmpeg.js';
 
 export {
   listHtmlVideoTemplates,
@@ -47,6 +49,8 @@ export interface GenerateHtmlVideoArgs {
   template?: string;
   /** Slot values for the template's inputs. */
   inputs?: Record<string, string>;
+  /** Ordered scenes for a multi-scene storyboard (rendered + concatenated). */
+  scenes?: HtmlVideoScene[];
   /** Design-template roots to resolve `template` against. */
   templateRoots?: string[];
   /** Output filename inside the project folder. Auto-named when omitted. */
@@ -87,11 +91,16 @@ export async function generateHtmlVideo(
     throw new Error('projectId required');
   }
 
+  // Multi-scene storyboard: render each scene to its own MP4, then concatenate.
+  if (args.scenes && args.scenes.length > 0) {
+    return renderStoryboard(args);
+  }
+
   if (!args.template && !args.compositionDir) {
     throw new Error(
-      'html-video requires either --template <id> (see `od html-video templates`) ' +
-        'or --composition-dir <project-relative-path> pointing at a directory ' +
-        'scaffolded with `npx hyperframes init`.',
+      'html-video requires --template <id> (see `od html-video templates`), ' +
+        '--scenes <json> for a storyboard, or --composition-dir <project-relative-path> ' +
+        'pointing at a directory scaffolded with `npx hyperframes init`.',
     );
   }
 
@@ -183,7 +192,17 @@ export async function generateHtmlVideo(
     if (cleanup) await cleanup();
   }
 
-  const safeOut = sanitizeName(args.output || autoOutputName());
+  return finalizeProjectVideo(dir, args.output, bytes, aspect);
+}
+
+/** Write MP4 bytes into the project folder and build the file metadata. */
+async function finalizeProjectVideo(
+  dir: string,
+  output: string | undefined,
+  bytes: Buffer,
+  aspect: string,
+): Promise<HtmlVideoFileMeta> {
+  const safeOut = sanitizeName(output || autoOutputName());
   const finalOut = safeOut.toLowerCase().endsWith('.mp4') ? safeOut : `${safeOut}.mp4`;
   const finalTarget = path.join(dir, finalOut);
   await writeFile(finalTarget, bytes);
@@ -199,4 +218,84 @@ export async function generateHtmlVideo(
     providerId: 'hyperframes',
     providerNote: `html-video/local-html · ${aspect} · ${st.size} bytes`,
   };
+}
+
+function describeRenderError(err: unknown): string {
+  const stderr =
+    err && typeof err === 'object' && typeof (err as { stderr?: unknown }).stderr === 'string'
+      ? (err as { stderr: string }).stderr.trim()
+      : '';
+  return (stderr || (err instanceof Error ? err.message : String(err))).slice(0, 480);
+}
+
+/**
+ * Render an ordered storyboard: each scene renders to its own MP4 (reusing the
+ * verified single-composition path), then ffmpeg concatenates them — scaling
+ * every scene to the first scene's resolution so mixed templates still join.
+ */
+async function renderStoryboard(args: GenerateHtmlVideoArgs): Promise<HtmlVideoFileMeta> {
+  const roots = args.templateRoots ?? [];
+  const scenes = args.scenes ?? [];
+  const resolved = scenes.map((scene, i) => {
+    const template = findHtmlVideoTemplate(roots, scene.template);
+    if (!template) {
+      throw new Error(
+        `unknown html-video template in scene ${i + 1}: "${scene.template}". Run \`od html-video templates\` to list available ids.`,
+      );
+    }
+    return { scene, template };
+  });
+  if (resolved.length === 0) throw new Error('storyboard requires at least one scene');
+
+  const first = resolved[0]!.template;
+  const width = first.width;
+  const height = first.height;
+  const fps = first.fps && first.fps > 0 ? first.fps : 30;
+  const aspect =
+    typeof args.aspect === 'string' && args.aspect
+      ? args.aspect
+      : first.aspectRatios[0] || '16:9';
+
+  const dir = await ensureProject(args.projectsRoot, args.projectId);
+  const tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'open-design-hv-sb-'));
+  try {
+    const sceneVideos: string[] = [];
+    for (let i = 0; i < resolved.length; i += 1) {
+      const { scene, template } = resolved[i]!;
+      args.onProgress?.(`Rendering scene ${i + 1}/${resolved.length} (${template.id})`);
+      const compDir = path.join(tmpRoot, `scene-${i}`);
+      await mkdir(compDir, { recursive: true });
+      const buildOpts =
+        typeof scene.durationSec === 'number' ? { durationSec: scene.durationSec } : {};
+      for (const file of buildCompositionFromTemplate(template, scene.inputs ?? {}, buildOpts)) {
+        await writeFile(path.join(compDir, file.name), file.content, 'utf8');
+      }
+      let bytes: Buffer;
+      try {
+        bytes = await renderHyperFramesComposition(compDir, args.onProgress);
+      } catch (err) {
+        throw new Error(`html-video scene ${i + 1} render failed: ${describeRenderError(err)}`);
+      }
+      const mp4 = path.join(tmpRoot, `scene-${i}.mp4`);
+      await writeFile(mp4, bytes);
+      sceneVideos.push(mp4);
+    }
+
+    if (sceneVideos.length === 1) {
+      const bytes = await readFile(sceneVideos[0]!);
+      return finalizeProjectVideo(dir, args.output, bytes, aspect);
+    }
+
+    args.onProgress?.(`Concatenating ${sceneVideos.length} scenes`);
+    const concatOut = path.join(tmpRoot, 'storyboard.mp4');
+    try {
+      await concatVideos(sceneVideos, concatOut, { width, height, fps }, args.onProgress);
+    } catch (err) {
+      throw new Error(`html-video storyboard concat failed: ${describeRenderError(err)}`);
+    }
+    const bytes = await readFile(concatOut);
+    return finalizeProjectVideo(dir, args.output, bytes, aspect);
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
 }
