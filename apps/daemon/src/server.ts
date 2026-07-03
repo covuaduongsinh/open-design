@@ -549,6 +549,7 @@ import { registerLiveArtifactRoutes } from './routes/live-artifact.js';
 import { registerDesignSystemToolRoutes } from './routes/design-system-tool.js';
 import { registerDeployRoutes, registerDeploymentCheckRoutes } from './routes/deploy.js';
 import { registerMediaRoutes } from './routes/media.js';
+import { registerHtmlVideoRoutes } from './routes/html-video.js';
 import { registerProjectRoutes, registerProjectArtifactRoutes, registerProjectFileRoutes, registerProjectUploadRoutes } from './routes/project/index.js';
 import { registerVelaRoutes } from './routes/vela.js';
 import { registerFinalizeRoutes, registerImportRoutes, registerProjectExportRoutes } from './import-export-routes.js';
@@ -4454,6 +4455,17 @@ export async function startServer({
     projectFiles: projectFileDeps,
     conversations: conversationDeps,
     research: researchDeps,
+  });
+
+  registerHtmlVideoRoutes(app, {
+    db,
+    design,
+    http: httpDeps,
+    paths: pathDeps,
+    ids: idDeps,
+    auth: authDeps,
+    media: mediaDeps,
+    projectStore: projectStoreDeps,
   });
 
   registerVelaRoutes(app, {

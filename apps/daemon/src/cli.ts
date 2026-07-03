@@ -74,6 +74,25 @@ const MEDIA_GENERATE_BOOLEAN_FLAGS = new Set([
   'loop',
 ]);
 
+// Flags accepted by `od html-video generate` / `od html-video templates`.
+// Hoisted above the subcommand dispatch for the same TDZ reason as the
+// MEDIA flag sets above (runHtmlVideo runs during module evaluation).
+const HTML_VIDEO_STRING_FLAGS = new Set([
+  'project',
+  'composition-dir',
+  'template',
+  'prompt',
+  'output',
+  'aspect',
+  'search',
+  'daemon-url',
+]);
+const HTML_VIDEO_BOOLEAN_FLAGS = new Set([
+  'help',
+  'h',
+  'json',
+]);
+
 const MCP_STRING_FLAGS = new Set([
   'daemon-url',
 ]);
@@ -308,6 +327,7 @@ const PLUGIN_LIST_BOOLEAN_FLAGS = new Set([
 const SUBCOMMAND_MAP = {
   artifacts: runArtifacts,
   media: runMedia,
+  'html-video': runHtmlVideo,
   mcp: runMcp,
   amr: runAmr,
   research: runResearch,
@@ -596,6 +616,11 @@ function printRootHelp() {
       Designed to be invoked by a code agent - picks up OD_DAEMON_URL
       and OD_PROJECT_ID from the env that the daemon injected on spawn.
 
+  od html-video generate --composition-dir <rel> [opts]
+      Render an HTML composition (hyperframes.json / meta.json / index.html)
+      into an MP4 using the local HyperFrames engine and write it into the
+      active project. See \`od html-video help\`.
+
   od mcp [--daemon-url <url>]
       Run a stdio MCP server that proxies project tool calls to a
       running Open Design daemon. Wire it into a coding agent
@@ -768,6 +793,157 @@ Flags:
 // ---------------------------------------------------------------------------
 // Subcommand: od media …
 // ---------------------------------------------------------------------------
+
+async function runHtmlVideo(args) {
+  const sub = args.find((a) => !a.startsWith('-')) || '';
+  if (sub === 'help' || sub === '-h' || sub === '--help' || sub === '') {
+    printHtmlVideoHelp();
+    return;
+  }
+  if (sub !== 'generate' && sub !== 'templates') {
+    console.error(`unknown subcommand: od html-video ${sub}`);
+    printHtmlVideoHelp();
+    process.exit(1);
+  }
+  const idx = args.indexOf(sub);
+  const subArgs = [...args.slice(0, idx), ...args.slice(idx + 1)];
+  if (sub === 'templates') return runHtmlVideoTemplates(subArgs);
+  return runHtmlVideoGenerate(subArgs);
+}
+
+async function runHtmlVideoTemplates(rawArgs) {
+  let flags;
+  try {
+    flags = parseFlags(rawArgs, {
+      string: HTML_VIDEO_STRING_FLAGS,
+      boolean: HTML_VIDEO_BOOLEAN_FLAGS,
+    });
+  } catch (err) {
+    console.error(err.message);
+    printHtmlVideoHelp();
+    process.exit(2);
+  }
+  const daemonUrl = await cliDaemonUrl(flags);
+  const qs = flags.search ? `?search=${encodeURIComponent(flags.search)}` : '';
+  const url = `${daemonUrl.replace(/\/$/, '')}/api/html-video/templates${qs}`;
+  let resp;
+  try {
+    resp = await fetch(url, { headers: { accept: 'application/json' } });
+  } catch (err) {
+    surfaceFetchError(err, daemonUrl);
+    process.exit(3);
+  }
+  if (!resp.ok) {
+    const text = await resp.text();
+    console.error(`daemon ${resp.status}: ${text}`);
+    process.exit(4);
+  }
+  const data = await resp.json();
+  const templates = Array.isArray(data.templates) ? data.templates : [];
+  if (flags.json) {
+    process.stdout.write(JSON.stringify({ templates }) + '\n');
+    return;
+  }
+  if (templates.length === 0) {
+    console.error('no html-video templates available yet (the template library lands in a later milestone)');
+    return;
+  }
+  for (const t of templates) {
+    process.stdout.write(`${t.id}\t${t.category || ''}\t${t.label || ''}\n`);
+  }
+}
+
+async function runHtmlVideoGenerate(rawArgs) {
+  let flags;
+  try {
+    flags = parseFlags(rawArgs, {
+      string: HTML_VIDEO_STRING_FLAGS,
+      boolean: HTML_VIDEO_BOOLEAN_FLAGS,
+    });
+  } catch (err) {
+    console.error(err.message);
+    printHtmlVideoHelp();
+    process.exit(2);
+  }
+
+  const daemonUrl = await cliDaemonUrl(flags);
+  const projectId = flags.project || process.env.OD_PROJECT_ID;
+  const token = process.env.OD_TOOL_TOKEN;
+  if (!projectId && !token) {
+    console.error(
+      'project id required. Pass --project <id> or set OD_PROJECT_ID. The daemon injects this when it spawns the code agent.',
+    );
+    process.exit(2);
+  }
+
+  if (!flags['composition-dir'] && !flags.template) {
+    console.error('--composition-dir <project-relative-path> is required (or --template once the library ships)');
+    process.exit(2);
+  }
+
+  const body = {
+    compositionDir: flags['composition-dir'],
+    template: flags.template,
+    prompt: flags.prompt,
+    output: flags.output,
+    aspect: flags.aspect,
+  };
+
+  const url = token
+    ? `${daemonUrl.replace(/\/$/, '')}/api/tools/html-video/generate`
+    : `${daemonUrl.replace(/\/$/, '')}/api/projects/${encodeURIComponent(projectId)}/html-video/generate`;
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    surfaceFetchError(err, daemonUrl);
+    process.exit(3);
+  }
+  if (!resp.ok) {
+    const text = await resp.text();
+    console.error(`daemon ${resp.status}: ${text}`);
+    process.exit(4);
+  }
+  const accepted = await resp.json();
+  const { taskId } = accepted;
+  if (!taskId) {
+    console.error('daemon did not return a taskId');
+    process.exit(4);
+  }
+  console.error(`task ${taskId} queued (${accepted.status || 'queued'})`);
+  await pollUntilDoneOrBudget(daemonUrl, taskId, 0, {
+    stillRunningExitCode: 0,
+  });
+}
+
+function printHtmlVideoHelp() {
+  console.log(`od html-video — render an HTML composition into an MP4 (local HyperFrames engine)
+
+Usage:
+  od html-video generate --composition-dir <rel> [--output <name.mp4>] [--aspect 16:9]
+  od html-video templates [--search <intent>] [--json]
+
+Flags (generate):
+  --project <id>          Project id (or set OD_PROJECT_ID; injected for agents)
+  --composition-dir <rel> Project-relative dir with hyperframes.json / meta.json / index.html
+  --output <name.mp4>     Output filename inside the project (auto-named otherwise)
+  --aspect <ratio>        Aspect ratio label, e.g. 16:9 (informational)
+  --daemon-url <url>      Override the daemon base URL
+
+Scaffold a composition first:
+  npx hyperframes init "$OD_PROJECT_DIR/.hyperframes-cache/<id>" --example blank --skip-skills --non-interactive
+  # edit index.html, then:
+  od html-video generate --composition-dir .hyperframes-cache/<id>
+
+Progress streams to stderr; the final { file } JSON envelope is written to stdout.`);
+}
 
 async function runMedia(args) {
   const sub = args.find((a) => !a.startsWith('-')) || '';

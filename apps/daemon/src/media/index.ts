@@ -47,7 +47,7 @@
 // so the CLI can exit non-zero and the agent can't silently narrate the
 // placeholder as the final result.
 
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { execFile as execFileCb, spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -79,6 +79,10 @@ import {
   mimeFor,
   sanitizeName,
 } from '../projects.js';
+import {
+  assertHyperFramesCompositionFile,
+  renderHyperFramesComposition,
+} from './hyperframes.js';
 import {
   AIHUBMIX_DEFAULT_BASE_URL,
   aihubmixHeaders,
@@ -597,6 +601,11 @@ export async function generateMedia(args: {
       suggestedExt = result.suggestedExt;
     } else if (def.provider === 'volcengine' && surface === 'video') {
       const result = await renderVolcengineVideo(ctx, credentials, args.onProgress);
+      bytes = result.bytes;
+      providerNote = result.providerNote;
+      suggestedExt = result.suggestedExt;
+    } else if (def.provider === 'seedance2ai' && surface === 'video') {
+      const result = await renderSeedance2aiVideo(ctx, credentials, args.onProgress);
       bytes = result.bytes;
       providerNote = result.providerNote;
       suggestedExt = result.suggestedExt;
@@ -1615,6 +1624,145 @@ async function renderVolcengineVideo(ctx: MediaContext, credentials: ProviderCon
     providerNote: `volcengine/${ctx.wireModel} · ${ratio} · ${durationSec}s · ${bytes.length} bytes`,
     suggestedExt: '.mp4',
   };
+}
+
+// ---------------------------------------------------------------------------
+// Provider: seedance2.ai — Seedance 2.0 on the user's own seedance2.ai credits.
+//
+// Proprietary API — NOT Volcengine-Ark / OpenAI compatible. Distinct path,
+// body shape and poll from the native Volcengine renderer above:
+//   POST /v1/videos/generations  → { taskId, credits }
+//   GET  /v1/tasks/{id}          → { status: queued|generating|completed|failed,
+//                                    data: { results: [video_url] }, failed_reason }
+// Submit, poll (docs cap at once / 10s) until completed/failed, then fetch the
+// produced URL and return the raw bytes. seedance2.ai CDN URLs expire, so we
+// stream the bytes into the project folder to keep them addressable.
+// ---------------------------------------------------------------------------
+async function renderSeedance2aiVideo(ctx: MediaContext, credentials: ProviderConfig, onProgress?: ProgressFn): Promise<RenderResult> {
+  if (!credentials.apiKey) {
+    throw new Error(
+      'no seedance2.ai API key — configure it in Settings (provider: seedance2ai) or set SEEDANCE2AI_API_KEY',
+    );
+  }
+  const baseUrl = (credentials.baseUrl || 'https://api.seedance2.ai').replace(/\/$/, '');
+  const wireModel = seedance2aiWireModel(ctx.wireModel);
+  const aspect = seedance2aiAspectFor(ctx.aspect);
+  const durationSec = clampSeedance2aiDuration(ctx.length);
+  const promptText = (ctx.prompt && ctx.prompt.trim()) || 'A short cinematic clip.';
+  const hasImage = Boolean(ctx.imageRef && ctx.imageRef.dataUrl);
+
+  const input: Record<string, unknown> = {
+    prompt: promptText,
+    generation_type: hasImage ? 'image-to-video' : 'text-to-video',
+    duration: durationSec,
+    aspect_ratio: aspect,
+    resolution: '720p',
+    watermark: false,
+  };
+  // seedance2.ai takes reference frames as `image_urls`. It accepts a data URL
+  // the same way the native Ark path does; when absent this is a plain t2v call.
+  if (hasImage) input.image_urls = [ctx.imageRef!.dataUrl];
+
+  const body = { model: wireModel, input };
+
+  const createResp = await fetch(`${baseUrl}/v1/videos/generations`, withMediaRequestInit(ctx, {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${credentials.apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  }));
+  const createText = await createResp.text();
+  if (!createResp.ok) {
+    throw new Error(`seedance2.ai create ${createResp.status}: ${truncate(createText, 240)}`);
+  }
+  let createData: any;
+  try {
+    createData = JSON.parse(createText);
+  } catch {
+    throw new Error(`seedance2.ai non-JSON: ${truncate(createText, 200)}`);
+  }
+  const taskId = createData && (createData.taskId || createData.id || createData.task_id);
+  if (!taskId) throw new Error('seedance2.ai create response missing taskId');
+
+  const startedAt = Date.now();
+  const configuredMaxMs = Number(process.env.OD_SEEDANCE2AI_VIDEO_MAX_POLL_MS);
+  const maxMs =
+    Number.isFinite(configuredMaxMs) && configuredMaxMs >= 60_000
+      ? configuredMaxMs
+      : 12 * 60 * 1000;
+  let videoUrl: string | null = null;
+  let lastStatus = '';
+  if (typeof onProgress === 'function') {
+    const mode = hasImage ? 'i2v' : 't2v';
+    onProgress(`seedance2.ai ${mode} task ${taskId} accepted; polling status…`);
+  }
+  // Docs require polling no more than once every 10s.
+  while (Date.now() - startedAt < maxMs) {
+    await sleep(10_000);
+    const pollResp = await fetch(`${baseUrl}/v1/tasks/${encodeURIComponent(taskId)}`, withMediaRequestInit(ctx, {
+      headers: { 'authorization': `Bearer ${credentials.apiKey}` },
+    }));
+    const pollText = await pollResp.text();
+    if (!pollResp.ok) {
+      throw new Error(`seedance2.ai poll ${pollResp.status}: ${truncate(pollText, 240)}`);
+    }
+    let pollData: any;
+    try {
+      pollData = JSON.parse(pollText);
+    } catch {
+      throw new Error(`seedance2.ai poll non-JSON: ${truncate(pollText, 200)}`);
+    }
+    lastStatus = pollData.status || '';
+    if (typeof onProgress === 'function') {
+      const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+      onProgress(`seedance2.ai task ${taskId} status=${lastStatus || 'pending'} (elapsed ${elapsedSec}s)`);
+    }
+    if (lastStatus === 'completed') {
+      const results = pollData?.data?.results;
+      videoUrl = Array.isArray(results) && results.length ? String(results[0]) : null;
+      break;
+    }
+    if (lastStatus === 'failed' || lastStatus === 'cancelled') {
+      const reason = pollData?.failed_reason || pollData?.error?.message || lastStatus;
+      throw new Error(`seedance2.ai task ${lastStatus}: ${reason}`);
+    }
+  }
+  if (!videoUrl) {
+    throw new Error(`seedance2.ai task did not finish in time (last status: ${lastStatus || 'unknown'})`);
+  }
+
+  const dlResp = await fetch(videoUrl, withMediaRequestInit(ctx));
+  if (!dlResp.ok) throw new Error(`seedance2.ai video fetch ${dlResp.status}`);
+  const bytes = Buffer.from(await dlResp.arrayBuffer());
+
+  return {
+    bytes,
+    providerNote: `seedance2ai/${wireModel} · ${aspect} · ${durationSec}s · ${bytes.length} bytes`,
+    suggestedExt: '.mp4',
+  };
+}
+
+function seedance2aiWireModel(modelId: string): string {
+  // Catalog ids are prefixed `seedance2ai-` to stay unique against other
+  // Seedance entries; the API wants the bare wire name (e.g. `seedance-2-0`).
+  const stripped = (modelId || '').replace(/^seedance2ai-/, '').trim();
+  return stripped || 'seedance-2-0';
+}
+
+function seedance2aiAspectFor(aspect?: string): string {
+  // seedance2.ai accepts 16:9|4:3|1:1|3:4|9:16|21:9|adaptive. Map the OD
+  // vocabulary through unchanged when valid; default to 16:9 otherwise.
+  const allowed = new Set(['16:9', '4:3', '1:1', '3:4', '9:16', '21:9']);
+  if (aspect && allowed.has(aspect)) return aspect;
+  return '16:9';
+}
+
+function clampSeedance2aiDuration(length?: number): number {
+  // Provider accepts 4–15s.
+  const n = Number.isFinite(length) ? (length as number) : 5;
+  return Math.min(15, Math.max(4, Math.round(n)));
 }
 
 function volcengineRatioFor(aspect?: string): string {
@@ -3744,8 +3892,6 @@ async function renderFalVideo(ctx: MediaContext, credentials: ProviderConfig, on
 //      under the user-supplied filename.
 // ---------------------------------------------------------------------------
 
-const HYPERFRAMES_RENDER_TIMEOUT_MS = 5 * 60 * 1000;
-
 async function renderHyperFramesViaCli(ctx: MediaContext, projectDir: string, onProgress?: ProgressFn): Promise<RenderResult> {
   const compRel = ctx.compositionDir;
   if (typeof compRel !== 'string' || !compRel.trim()) {
@@ -3803,142 +3949,22 @@ async function renderHyperFramesViaCli(ctx: MediaContext, projectDir: string, on
     'The agent must write index.html (with window.__timelines registration) before dispatch.',
   );
 
-  const tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'open-design-hf-'));
-  const tmpOutput = path.join(tmpRoot, 'render.mp4');
   try {
-    // Pin --workers 1 to keep memory bounded (each worker is a Chrome
-    // process at ~256 MB). standard quality matches HF's default. We
-    // do NOT pass --quiet so progress lines stream out and the agent
-    // (and the user reading the chat in real time) can see frame-by-
-    // frame capture status instead of staring at a hung pipe.
-    await runHyperFramesRender(compAbs, tmpOutput, onProgress);
-    const bytes = await readFile(tmpOutput);
+    // renderHyperFramesComposition pins --workers 1 to keep memory
+    // bounded and streams frame-by-frame progress through onProgress so
+    // the agent (and the user reading the chat) can see capture status
+    // instead of staring at a hung pipe.
+    const bytes = await renderHyperFramesComposition(compAbs, onProgress);
     return {
       bytes,
       providerNote: `hyperframes/local-html · ${ctx.aspect} · ${bytes.length} bytes`,
       suggestedExt: '.mp4',
     };
   } catch (err) {
-    const stderr =
-      errorStringProp(err, 'stderr').trim();
+    const stderr = errorStringProp(err, 'stderr').trim();
     const message = stderr || errorMessage(err);
     throw new Error(`hyperframes render failed: ${truncate(message, 480)}`);
-  } finally {
-    await rm(tmpRoot, { recursive: true, force: true });
   }
-}
-
-async function assertHyperFramesCompositionFile(
-  compAbs: string,
-  compRel: string,
-  fileName: string,
-  guidance: string,
-): Promise<void> {
-  const fileStat = await stat(path.join(compAbs, fileName)).catch(() => null);
-  if (!fileStat || !fileStat.isFile()) {
-    throw new Error(
-      `compositionDir is missing ${fileName}: ${compRel}. ${guidance}`,
-    );
-  }
-}
-
-/**
- * Run `npx hyperframes render` and stream every line of stdout/stderr
- * through `onProgress`. Resolves on a clean exit, rejects on non-zero
- * exit (with the stderr tail attached so the dispatcher can surface it).
- *
- * Streaming matters for UX: the render typically takes 60–120s and
- * HF prints "Capturing frame N/M" as it goes. Without piping these
- * lines back to the caller, the HTTP request looks hung and the
- * agent's chat tool shows a long quiet spinner — users can't tell
- * whether anything is happening.
- */
-function runHyperFramesRender(compAbs: string, tmpOutput: string, onProgress?: ProgressFn): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const child = spawn(
-      'npx',
-      [
-        '-y',
-        'hyperframes',
-        'render',
-        compAbs,
-        '--output',
-        tmpOutput,
-        '--workers',
-        '1',
-      ],
-      {
-        // Inherit env so npx can find the cached hyperframes install
-        // and any user-level node config. stdin closed (HF doesn't
-        // read from it), stdout/stderr piped so we can stream.
-        env: process.env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      },
-    );
-
-    // HF uses ANSI escape sequences (cursor moves, color codes, line
-    // erases) for its pretty progress bar. Strip those before
-    // forwarding so the agent's chat doesn't render a wall of `[2K`.
-    // The regex covers CSI sequences (most of what HF emits).
-    const stripAnsi = (s: string): string =>
-      s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\x1b\[\?[0-9]+[hl]/g, '');
-
-    const emit = (chunk: Buffer): void => {
-      if (typeof onProgress !== 'function') return;
-      const text = stripAnsi(chunk.toString('utf8'));
-      // HF refreshes a single progress line many times per second; split
-      // on \r and \n so each "Capturing frame X/Y" update reaches the
-      // caller as its own line. Drop empty/duplicate lines so the
-      // SSE stream stays compact.
-      const lines = text.split(/[\r\n]+/);
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          onProgress(trimmed);
-        } catch {
-          // best-effort: never let an emitter throw kill the render
-        }
-      }
-    };
-
-    let stderrTail = '';
-    child.stdout.on('data', emit);
-    child.stderr.on('data', (chunk) => {
-      stderrTail += chunk.toString('utf8');
-      if (stderrTail.length > 8000) stderrTail = stderrTail.slice(-8000);
-      emit(chunk);
-    });
-
-    const timer = setTimeout(() => {
-      try {
-        child.kill('SIGKILL');
-      } catch {
-        // ignore
-      }
-      reject(
-        new Error(
-          `hyperframes render timed out after ${Math.round(HYPERFRAMES_RENDER_TIMEOUT_MS / 1000)}s`,
-        ),
-      );
-    }, HYPERFRAMES_RENDER_TIMEOUT_MS);
-
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-    child.on('close', (code, signal) => {
-      clearTimeout(timer);
-      if (code === 0) return resolve();
-      const reason = signal ? `signal ${signal}` : `exit ${code}`;
-      const tail = stderrTail.trim().split('\n').slice(-12).join('\n');
-      const err = new Error(
-        `hyperframes render exited ${reason}` + (tail ? `\n${tail}` : ''),
-      ) as Error & { stderr: string };
-      err.stderr = tail;
-      reject(err);
-    });
-  });
 }
 
 // ---------------------------------------------------------------------------

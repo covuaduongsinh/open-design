@@ -236,6 +236,16 @@ these spawn Chrome so the agent-side sandbox doesn't trip them.
 Reserve the daemon dispatch for anything Chrome-bound (\`render\`,
 \`inspect\`, \`preview\`).
 
+**Dedicated alias:** \`"$OD_NODE_BIN" "$OD_BIN" html-video generate
+--project "$OD_PROJECT_ID" --composition-dir "$COMP_REL"\` renders the same
+way (same daemon-side HyperFrames engine, same task queue, same
+generate→wait loop) and is interchangeable with the \`media generate
+--model hyperframes-html\` recipe above. Prefer it when the user framed the
+task as "turn this HTML into a video". List available templates with
+\`html-video templates\` (empty until the template library ships). Everything
+else in this carve-out — scaffold with \`hyperframes init\`, edit only
+index.html, daemon renders — applies unchanged.
+
 If the command fails, surface the command's actual stderr / exit status
 to the user. Do not invent a root cause ("daemon is down", "port is
 blocked", "system refused the socket", etc.) unless the command itself
