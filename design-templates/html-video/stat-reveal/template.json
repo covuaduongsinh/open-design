@@ -1,0 +1,21 @@
+{
+  "id": "stat-reveal",
+  "label": "Stat Reveal",
+  "category": "data-viz",
+  "tags": ["stat", "number", "metric", "data-viz", "kpi"],
+  "bestFor": ["headline metric", "growth number", "single KPI reveal"],
+  "aspectRatios": ["16:9", "9:16", "1:1"],
+  "fps": 30,
+  "durationBoundsSec": { "min": 3, "max": 8 },
+  "hasAudioTrack": false,
+  "durationSec": 5,
+  "width": 1920,
+  "height": 1080,
+  "inputs": {
+    "value": { "label": "Big value", "default": "+40%", "kind": "text" },
+    "label": { "label": "Label", "default": "Revenue growth", "kind": "text" },
+    "caption": { "label": "Caption", "default": "", "kind": "text" },
+    "accent": { "label": "Accent color", "default": "#5ee0a0", "kind": "color" },
+    "background": { "label": "Background color", "default": "#0b0e14", "kind": "color" }
+  }
+}

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width={{width}}, height={{height}}" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: {{width}}px;
+        height: {{height}}px;
+        overflow: hidden;
+        background: {{background}};
+        font-family: "Inter", system-ui, sans-serif;
+      }
+      .scene {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 20px;
+        padding: 120px;
+        text-align: center;
+      }
+      .value {
+        font-size: 280px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1;
+        color: {{accent}};
+      }
+      .label {
+        font-size: 56px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        color: #eef1f7;
+      }
+      .caption {
+        font-size: 34px;
+        font-weight: 400;
+        color: #9aa4b6;
+        max-width: 1100px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="{{duration}}"
+      data-width="{{width}}"
+      data-height="{{height}}"
+    >
+      <div class="scene">
+        <div class="value" id="value">{{value}}</div>
+        <div class="label" id="label">{{label}}</div>
+        <div class="caption" id="caption">{{caption}}</div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const D = {{duration}};
+      const tl = gsap.timeline({ paused: true });
+      tl.from("#value", { scale: 0.82, opacity: 0, filter: "blur(14px)", duration: 0.7, ease: "power3.out" }, 0);
+      tl.from("#label", { y: 34, opacity: 0, duration: 0.55, ease: "power3.out" }, 0.3);
+      tl.from("#caption", { y: 26, opacity: 0, duration: 0.5, ease: "power3.out" }, 0.45);
+      tl.to("#value", { y: -24, opacity: 0, duration: 0.4, ease: "power2.in" }, Math.max(0.9, D - 0.55));
+      tl.to("#label", { y: -18, opacity: 0, duration: 0.35, ease: "power2.in" }, Math.max(0.95, D - 0.5));
+      tl.to("#caption", { y: -14, opacity: 0, duration: 0.35, ease: "power2.in" }, Math.max(1.0, D - 0.45));
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

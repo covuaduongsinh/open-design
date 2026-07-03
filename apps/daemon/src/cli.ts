@@ -81,6 +81,7 @@ const HTML_VIDEO_STRING_FLAGS = new Set([
   'project',
   'composition-dir',
   'template',
+  'inputs',
   'prompt',
   'output',
   'aspect',
@@ -877,7 +878,7 @@ async function runHtmlVideoGenerate(rawArgs) {
   }
 
   if (!flags['composition-dir'] && !flags.template) {
-    console.error('--composition-dir <project-relative-path> is required (or --template once the library ships)');
+    console.error('pass --template <id> (see `od html-video templates`) or --composition-dir <project-relative-path>');
     process.exit(2);
   }
 
@@ -888,6 +889,20 @@ async function runHtmlVideoGenerate(rawArgs) {
     output: flags.output,
     aspect: flags.aspect,
   };
+  if (flags.inputs) {
+    let parsed;
+    try {
+      parsed = JSON.parse(flags.inputs);
+    } catch {
+      console.error('--inputs must be a JSON object, e.g. --inputs \'{"title":"Hello"}\'');
+      process.exit(2);
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      console.error('--inputs must be a JSON object');
+      process.exit(2);
+    }
+    body.inputs = parsed;
+  }
 
   const url = token
     ? `${daemonUrl.replace(/\/$/, '')}/api/tools/html-video/generate`
@@ -927,17 +942,24 @@ function printHtmlVideoHelp() {
   console.log(`od html-video — render an HTML composition into an MP4 (local HyperFrames engine)
 
 Usage:
+  od html-video generate --template <id> [--inputs '<json>'] [--output <name.mp4>]
   od html-video generate --composition-dir <rel> [--output <name.mp4>] [--aspect 16:9]
   od html-video templates [--search <intent>] [--json]
 
 Flags (generate):
   --project <id>          Project id (or set OD_PROJECT_ID; injected for agents)
+  --template <id>         Template id from the catalogue (see: od html-video templates)
+  --inputs '<json>'       JSON object of slot values, e.g. '{"title":"Q3 Recap"}'
   --composition-dir <rel> Project-relative dir with hyperframes.json / meta.json / index.html
   --output <name.mp4>     Output filename inside the project (auto-named otherwise)
   --aspect <ratio>        Aspect ratio label, e.g. 16:9 (informational)
   --daemon-url <url>      Override the daemon base URL
 
-Scaffold a composition first:
+Render from a template:
+  od html-video templates --search "title card"
+  od html-video generate --template title-card --inputs '{"title":"Launch Day","subtitle":"v1.0"}'
+
+Or scaffold a composition by hand:
   npx hyperframes init "$OD_PROJECT_DIR/.hyperframes-cache/<id>" --example blank --skip-skills --non-interactive
   # edit index.html, then:
   od html-video generate --composition-dir .hyperframes-cache/<id>

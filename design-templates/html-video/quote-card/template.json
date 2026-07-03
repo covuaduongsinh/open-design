@@ -1,0 +1,20 @@
+{
+  "id": "quote-card",
+  "label": "Quote Card",
+  "category": "cinematic",
+  "tags": ["quote", "testimonial", "pullquote", "cinematic"],
+  "bestFor": ["testimonial", "pull quote", "closing statement"],
+  "aspectRatios": ["16:9", "9:16", "1:1"],
+  "fps": 30,
+  "durationBoundsSec": { "min": 4, "max": 10 },
+  "hasAudioTrack": false,
+  "durationSec": 6,
+  "width": 1920,
+  "height": 1080,
+  "inputs": {
+    "quote": { "label": "Quote", "default": "The best way to predict the future is to invent it.", "kind": "text" },
+    "author": { "label": "Attribution", "default": "", "kind": "text" },
+    "accent": { "label": "Accent color", "default": "#e0b15e", "kind": "color" },
+    "background": { "label": "Background color", "default": "#0b0e14", "kind": "color" }
+  }
+}

@@ -14,7 +14,10 @@ import type {
   HtmlVideoTemplateSummary,
 } from '@open-design/contracts';
 
-export type { HtmlVideoTemplateSummary } from '@open-design/contracts';
+export type {
+  HtmlVideoGenerateRequest,
+  HtmlVideoTemplateSummary,
+} from '@open-design/contracts';
 
 /** Static descriptor the UI uses to label the capability. */
 export const HTML_VIDEO_CAPABILITY = {

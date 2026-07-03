@@ -42,9 +42,11 @@ export interface HtmlVideoTemplatesResponse {
 export interface HtmlVideoGenerateRequest {
   /** Project-relative directory holding hyperframes.json / meta.json / index.html. */
   compositionDir?: string;
-  /** Template id from the html-video catalogue (M2+). */
+  /** Template id from the html-video catalogue. */
   template?: string;
-  /** Free-text brief used to fill template slots (M2+). */
+  /** Slot values for the chosen template's inputs. */
+  inputs?: Record<string, string>;
+  /** Free-text brief used to fill template slots (M3+ storyboard). */
   prompt?: string;
   /** Output filename inside the project folder. Defaults to an auto name. */
   output?: string;

@@ -27,7 +27,8 @@ export interface RegisterHtmlVideoRoutesDeps
 export function registerHtmlVideoRoutes(app: Express, ctx: RegisterHtmlVideoRoutesDeps) {
   const { db, design } = ctx;
   const { sendApiError, isLocalSameOrigin, resolvedPortRef } = ctx.http;
-  const { PROJECT_ROOT, PROJECTS_DIR } = ctx.paths;
+  const { PROJECT_ROOT, PROJECTS_DIR, DESIGN_TEMPLATES_DIR, USER_DESIGN_TEMPLATES_DIR } = ctx.paths;
+  const templateRoots = [USER_DESIGN_TEMPLATES_DIR, DESIGN_TEMPLATES_DIR].filter(Boolean);
   const { authorizeToolRequest, optionalToolGrantFromRequest, requestProjectOverride } = ctx.auth;
   const { randomUUID } = ctx.ids;
   const { createMediaTask, persistMediaTask, appendTaskProgress, notifyTaskWaiters } = ctx.media;
@@ -66,6 +67,12 @@ export function registerHtmlVideoRoutes(app: Express, ctx: RegisterHtmlVideoRout
     if (!compositionDir && !template) {
       return sendApiError(res, 400, 'BAD_REQUEST', 'compositionDir or template is required');
     }
+    const inputs: Record<string, string> = {};
+    if (req.body?.inputs && typeof req.body.inputs === 'object' && !Array.isArray(req.body.inputs)) {
+      for (const [key, val] of Object.entries(req.body.inputs as Record<string, unknown>)) {
+        if (typeof val === 'string') inputs[key] = val;
+      }
+    }
 
     const policy = policyForGrant(options.grant);
     if (!policy.ok) {
@@ -88,6 +95,8 @@ export function registerHtmlVideoRoutes(app: Express, ctx: RegisterHtmlVideoRout
         projectId,
         compositionDir,
         template,
+        inputs,
+        templateRoots,
         output: typeof req.body?.output === 'string' ? req.body.output : undefined,
         aspect: typeof req.body?.aspect === 'string' ? req.body.aspect : undefined,
         onProgress: (line: string) => appendTaskProgress(task!, line),
@@ -137,7 +146,7 @@ export function registerHtmlVideoRoutes(app: Express, ctx: RegisterHtmlVideoRout
       return res.status(403).json({ error: 'cross-origin request rejected' });
     }
     const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-    res.json({ templates: listHtmlVideoTemplates(search) });
+    res.json({ templates: listHtmlVideoTemplates(templateRoots, search) });
   });
 
   app.post('/api/projects/:id/html-video/generate', async (req, res) => {

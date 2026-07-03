@@ -21,25 +21,26 @@ describe('html-video generator preflight', () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it('requires a composition dir', async () => {
+  it('requires a template or a composition dir', async () => {
     await expect(
       generateHtmlVideo({
         projectRoot,
         projectsRoot,
         projectId: 'project-1',
       }),
-    ).rejects.toThrow(/requires --composition-dir/);
+    ).rejects.toThrow(/requires either --template/);
   });
 
-  it('rejects a template-only request until the library ships', async () => {
+  it('rejects an unknown template id', async () => {
     await expect(
       generateHtmlVideo({
         projectRoot,
         projectsRoot,
         projectId: 'project-1',
-        template: 'stars-race',
+        template: 'does-not-exist',
+        templateRoots: [],
       }),
-    ).rejects.toThrow(/template rendering is not available yet/);
+    ).rejects.toThrow(/unknown html-video template/);
   });
 
   it('refuses a composition dir that escapes the project', async () => {

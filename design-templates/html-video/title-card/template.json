@@ -1,0 +1,20 @@
+{
+  "id": "title-card",
+  "label": "Title Card",
+  "category": "title",
+  "tags": ["title", "intro", "kinetic-typography", "opener"],
+  "bestFor": ["opening title", "section header", "intro card"],
+  "aspectRatios": ["16:9", "9:16"],
+  "fps": 30,
+  "durationBoundsSec": { "min": 3, "max": 8 },
+  "hasAudioTrack": false,
+  "durationSec": 5,
+  "width": 1920,
+  "height": 1080,
+  "inputs": {
+    "title": { "label": "Title", "default": "Your Title", "kind": "text" },
+    "subtitle": { "label": "Subtitle", "default": "", "kind": "text" },
+    "accent": { "label": "Accent color", "default": "#7c9cff", "kind": "color" },
+    "background": { "label": "Background color", "default": "#0b0e14", "kind": "color" }
+  }
+}
